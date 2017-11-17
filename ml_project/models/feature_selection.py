@@ -1,45 +1,46 @@
+import math
+import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.utils import check_random_state
-from sklearn.utils.validation import check_array, check_is_fitted
-from sklearn.utils.random import sample_without_replacement
 
 
-class NonZeroSelection(BaseEstimator, TransformerMixin):
-    """Select non-zero voxels"""
+class HistogramDownsampling(BaseEstimator, TransformerMixin):
+    """Downsampling data with histogram"""
+
+    def __init__(self, bins=15, kernel_size=(16, 16)):
+        self.bins = bins
+        self.kernel_size = kernel_size
+
     def fit(self, X, y=None):
-        X = check_array(X)
-        self.nonzero = X.sum(axis=0) > 0
-
         return self
 
     def transform(self, X, y=None):
-        check_is_fitted(self, ["nonzero"])
-        X = check_array(X)
-        return X[:, self.nonzero]
-
-
-class RandomSelection(BaseEstimator, TransformerMixin):
-    """Random Selection of features"""
-    def __init__(self, n_components=1000, random_state=None):
-        self.n_components = n_components
-        self.random_state = random_state
-        self.components = None
-
-    def fit(self, X, y=None):
-        X = check_array(X)
-        n_samples, n_features = X.shape
-
-        random_state = check_random_state(self.random_state)
-        self.components = sample_without_replacement(
-                            n_features,
-                            self.n_components,
-                            random_state=random_state)
-        return self
-
-    def transform(self, X, y=None):
-        check_is_fitted(self, ["components"])
-        X = check_array(X)
-        n_samples, n_features = X.shape
-        X_new = X[:, self.components]
-
-        return X_new
+        X_reshaped = X.reshape(-1, 176, 208, 176)
+        X_cropped = X_reshaped[:, 40:140, 40:170, 40:140]
+        no_histograms = math.ceil(X_cropped.shape[2] / self.kernel_size[0]) * \
+            math.ceil(X_cropped.shape[3] / self.kernel_size[1])
+        X_hist = np.zeros(shape=[X_cropped.shape[0],
+                                 X_cropped.shape[1],
+                                 no_histograms,
+                                 self.bins])
+        for sample_index in range(X_cropped.shape[0]):
+            print((sample_index + 1) / X_cropped.shape[0] * 100)
+            for layer_index in range(X_cropped.shape[1]):
+                layer = X_cropped[sample_index][layer_index]
+                no_j_buckets = math.ceil(X_cropped.shape[3] /
+                                         self.kernel_size[1])
+                for bucket_i in range(0, layer.shape[0], self.kernel_size[0]):
+                    for bucket_j in range(0,
+                                          layer.shape[1],
+                                          self.kernel_size[1]):
+                        bucket_i_end = min(bucket_i + self.kernel_size[0],
+                                           layer.shape[0])
+                        bucket_j_end = min(bucket_j + self.kernel_size[1],
+                                           layer.shape[1])
+                        bucket = layer[bucket_i:bucket_i_end,
+                                       bucket_j:bucket_j_end]
+                        hist, bin_edges = np.histogram(bucket.reshape(-1),
+                                                       bins=self.bins)
+                        hist_index = (bucket_i // self.kernel_size[0]) * \
+                            no_j_buckets + (bucket_j // self.kernel_size[1])
+                        X_hist[sample_index][layer_index][hist_index] = hist
+        return X_hist.reshape(X_hist.shape[0], -1)
