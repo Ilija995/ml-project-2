@@ -3,7 +3,6 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_array, check_is_fitted
 from sklearn.linear_model import LogisticRegression
 from sklearn.utils import resample
-from sklearn.svm import SVC
 
 
 class ResamplingAndLogisticRegression(BaseEstimator, TransformerMixin):
